@@ -95,9 +95,11 @@ CREATE TABLE news_items (
     source TEXT NOT NULL,
     url TEXT,
     category_id INTEGER NOT NULL REFERENCES news_categories(id),
+    content_hash BIGINT,
     PRIMARY KEY (time, news_id)
 );
 
+CREATE INDEX idx_news_content_hash ON news_items(content_hash, category_id);
 SELECT create_hypertable('news_items', 'time');
 
 CREATE TABLE news_contract_relations (

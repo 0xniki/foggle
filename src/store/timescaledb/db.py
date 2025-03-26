@@ -1,20 +1,29 @@
 import asyncio
 import asyncpg
+import hashlib
+
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 
 
 class Database:
-    def __init__(self, dsn: str):
+    def __init__(self, config: Dict):
         """
         Initialize the database connector with a DSN connection string
         
         Args:
             dsn: PostgreSQL connection string
         """
-        self.dsn = dsn
+        user = config.get('user')
+        password = config.get('key')
+        host = config.get('host')
+        port = config.get('port')
+        database = config.get('database')
+
+        self.dsn = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+
         self.pool = None
-        self._contract_cache = {}  # in-memory cache of contracts to avoid repeated lookups
+        self._contract_cache = {}
 
     async def init_pool(self):
         """Initialize the connection pool"""
@@ -166,44 +175,239 @@ class Database:
                         values
                     )
 
-
-async def main():
-    
-    # Example trade data
-    trades_batch1 = [
-        {'contract': {'symbol': 'NQ', 'expiration': '202506', 'exchange': 'CME', 'currency': 'USD', 'secType': 'FUT'}, 
-         'timestamp': 1742875381380, 'price': 20338.0, 'size': 1.0},
-        {'contract': {'symbol': 'NQ', 'expiration': '202506', 'exchange': 'CME', 'currency': 'USD', 'secType': 'FUT'}, 
-         'timestamp': 1742875381380, 'price': 20338.0, 'size': 2.0}
-    ]
-    
-    trades_batch2 = [
-        {'contract': {'symbol': 'MES', 'expiration': '202506', 'exchange': 'CME', 'currency': 'USD', 'secType': 'FUT'}, 
-         'timestamp': 1742875382279, 'price': 5807.25, 'size': 1.0}
-    ]
-    
-    trades_batch3 = [
-        {'contract': {'symbol': 'SOL', 'exchange': 'HYPERLIQUID', 'currency': 'USD', 'secType': 'CRYPTO'}, 
-         'timestamp': 1742875379873, 'price': 138.18, 'size': 1.9, 'side': 'A', 
-         'hash': '0xf5a52df6d598821fecc004203821ce02030600adc5313b9dcc48a29f5abbda0f', 
-         'tid': 54155166059875, 
-         'users': ['0x4b25eee404202497f35d2a42f8d560f3c8a8fc91', '0xcdd8ded304e66bfd08fb8d71996c703649d12b9f']}
-    ]
-    
-    # Initialize database connection
-    db = Database('postgresql://postgres:password@localhost:5432/postgres')
-    await db.init_pool()
-    
-    try:
-        # Process each batch of trades
-        await db.insert_trades(trades_batch1)
-        await db.insert_trades(trades_batch2)
-        await db.insert_trades(trades_batch3)
+    async def insert_news_item(self, source: str, news_data: Dict):
+        """
+        Insert economic news data with duplicate prevention
         
-        print("Trade data inserted successfully")
-    finally:
-        await db.close()
+        Args:
+            source: Source name
+            news_data: News data dictionary with category, item, timestamp, etc.
+        """
+        async with self.pool.acquire() as conn:
+            # Get or create category
+            category_id = await self._get_or_create_category(
+                conn, 
+                news_data['category'], 
+                news_data['item']
+            )
+            
+            # Convert timestamp to datetime if needed
+            if isinstance(news_data['timestamp'], (int, float)):
+                timestamp = datetime.fromtimestamp(news_data['timestamp'])
+            else:
+                timestamp = news_data['timestamp']
+            
+            content = news_data.get('content', '')
 
+            content_hash = stable_hash(content)
+            
+            # Check if we already have this content stored recently (within last 24 hours)
+            existing_news = await conn.fetchval(
+                """
+                SELECT 1 FROM news_items
+                WHERE category_id = $1 
+                AND content_hash = $2
+                AND time > NOW() - INTERVAL '24 hours'
+                LIMIT 1
+                """,
+                category_id, content_hash
+            )
+            
+            if existing_news:
+                # Skip insertion if duplicate found
+                return None
+                    
+            # Generate a unique news ID
+            news_id = hash(f"{source}:{news_data['category']}:{news_data['item']}:{timestamp}")
+            
+            # Insert the news item with content hash
+            return await conn.fetchval(
+                """
+                INSERT INTO news_items 
+                (time, news_id, title, content, source, category_id, content_hash)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING news_id
+                """,
+                timestamp,
+                news_id,
+                news_data.get('title', ''),
+                content,
+                source,
+                category_id,
+                content_hash
+            )
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    async def _get_or_create_category(self, conn, main_category, subcategory=None):
+        """Get or create category and subcategory"""
+        formatted_main = self._format_category_name(main_category)
+
+        main_cat_id = await conn.fetchval(
+            "SELECT id FROM news_categories WHERE name = $1",
+            formatted_main
+        )
+        
+        if not main_cat_id:
+            main_cat_id = await conn.fetchval(
+                "INSERT INTO news_categories (name) VALUES ($1) RETURNING id",
+                formatted_main
+            )
+        
+        if not subcategory:
+            return main_cat_id
+
+        formatted_sub = self._format_category_name(subcategory)
+
+        sub_cat_id = await conn.fetchval(
+            "SELECT id FROM news_categories WHERE name = $1 AND parent_id = $2",
+            formatted_sub, main_cat_id
+        )
+        
+        if not sub_cat_id:
+            sub_cat_id = await conn.fetchval(
+                "INSERT INTO news_categories (name, parent_id) VALUES ($1, $2) RETURNING id",
+                formatted_sub, main_cat_id
+            )
+        
+        return sub_cat_id
+
+    def _format_category_name(self, name):
+        """Convert hyphenated lowercase names to proper title case"""
+        words = name.replace('-', ' ').split()
+        return ' '.join(word.capitalize() for word in words)
+
+    async def get_subcategories(self, category_name):
+        """
+        Get all subcategories for a given main category
+        
+        Args:
+            category_name: Name of the main category
+            
+        Returns:
+            List of subcategory objects with id and name
+        """
+        formatted_name = self._format_category_name(category_name)
+        
+        async with self.pool.acquire() as conn:
+            # First get the ID of the main category
+            main_cat_id = await conn.fetchval(
+                "SELECT id FROM news_categories WHERE name = $1",
+                formatted_name
+            )
+            
+            if not main_cat_id:
+                return []
+            
+            # Then get all subcategories
+            subcategories = await conn.fetch(
+                """
+                SELECT id, name 
+                FROM news_categories 
+                WHERE parent_id = $1
+                ORDER BY name
+                """,
+                main_cat_id
+            )
+            
+            return [dict(sub) for sub in subcategories]
+
+    async def get_news_by_category(self, category_name, subcategory_name=None, limit=50, offset=0):
+        """
+        Get news items for a specific category and optional subcategory
+        
+        Args:
+            category_name: Name of the main category
+            subcategory_name: Name of the subcategory (optional)
+            limit: Maximum number of results to return
+            offset: Pagination offset
+            
+        Returns:
+            List of news items
+        """
+        formatted_cat = self._format_category_name(category_name)
+        
+        async with self.pool.acquire() as conn:
+            if subcategory_name:
+                formatted_sub = self._format_category_name(subcategory_name)
+                
+                # Get category ID for the subcategory
+                category_id = await conn.fetchval(
+                    """
+                    SELECT sc.id
+                    FROM news_categories sc
+                    JOIN news_categories mc ON sc.parent_id = mc.id
+                    WHERE mc.name = $1 AND sc.name = $2
+                    """,
+                    formatted_cat, formatted_sub
+                )
+                
+                if not category_id:
+                    return []
+            else:
+                # Get category ID for the main category
+                category_id = await conn.fetchval(
+                    "SELECT id FROM news_categories WHERE name = $1",
+                    formatted_cat
+                )
+                
+                if not category_id:
+                    return []
+            
+            # Query news items for the category
+            news_items = await conn.fetch(
+                """
+                SELECT ni.time, ni.title, ni.content, ni.source, 
+                    nc.name as category_name
+                FROM news_items ni
+                JOIN news_categories nc ON ni.category_id = nc.id
+                WHERE ni.category_id = $1
+                ORDER BY ni.time DESC
+                LIMIT $2 OFFSET $3
+                """,
+                category_id, limit, offset
+            )
+            
+            return [dict(item) for item in news_items]
+
+    async def get_latest_news(self, limit=10):
+        """
+        Get the latest news items across all categories
+        
+        Args:
+            limit: Maximum number of results to return
+            
+        Returns:
+            List of news items with category information
+        """
+        async with self.pool.acquire() as conn:
+            news_items = await conn.fetch(
+                """
+                SELECT ni.time, ni.title, ni.content, ni.source,
+                    nc.name as category_name,
+                    (SELECT parent.name 
+                        FROM news_categories parent 
+                        WHERE parent.id = nc.parent_id) as main_category_name
+                FROM news_items ni
+                JOIN news_categories nc ON ni.category_id = nc.id
+                ORDER BY ni.time DESC
+                LIMIT $1
+                """,
+                limit
+            )
+            
+            return [dict(item) for item in news_items]
+
+def stable_hash(text):
+
+    """Create a stable hash that will be consistent across runs"""
+
+    if not text:
+
+        return 0
+
+    # Get first 200 chars and create a consistent hash
+
+    text_sample = text[:200].encode('utf-8')
+
+    # Use MD5 for speed (we just need consistency, not cryptographic security)
+
+    return int(hashlib.md5(text_sample).hexdigest(), 16) % (2**63)

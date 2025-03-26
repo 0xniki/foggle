@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from typing import Dict
 
 from src.api_manager import APIManager
+from src.store.timescaledb.db import Database
 from src.newswatch.trading_econ import TradingEconomics
 from src.exchanges.ibkr import contract, util
 
@@ -25,17 +26,20 @@ class Foggle:
     async def run(self) -> None:
         config = load_config()
 
+        db = Database(config=config['TimescaleDB'])
+        await db.init_pool()
+
         await self.api_manager.start(config=config)
 
         topics = {
             "commodity": ["crude-oil", "gold"],
             "united-states": ["stock-market", "government-bond-yield", "inflation-cpi"]
         }
-        te = TradingEconomics(topics=topics)
+        te = TradingEconomics(topics=topics, callback=db.insert_news_item)
         ibkr = self.api_manager.exchanges["IBKR"]
         hyperliquid = self.api_manager.exchanges["HyperLiquid"]
 
-        await test(ibkr, hyperliquid, te)
+        await test(ibkr, hyperliquid, te, db)
 
         try:
             task = asyncio.create_task(self.run_forever())
@@ -85,8 +89,13 @@ def load_keys(path: str = '.env', key: str = None) -> Dict:
     return os.getenv(key)
 
 
-async def test(ibkr, hyperliquid, te):
+async def test(ibkr, hyperliquid, te, db):
     te.start_scrape(interval=3600)
+
+    # Get news for the "government-bond-yield" subcategory
+    news = await db.get_news_by_category("United States", "Stock Market", limit=2)
+
+    print(news)
 
     spy = contract.Future(symbol='MES', lastTradeDateOrContractMonth='202506', exchange='CME', currency='USD')
     nq = contract.Future(symbol='NQ', lastTradeDateOrContractMonth='202506', exchange='CME', currency='USD')

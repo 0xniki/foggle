@@ -1,19 +1,21 @@
+import time
 import logging
 import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
 
-from typing import Dict, List
+from typing import Dict, List, Callable
 
 class TradingEconomics:
     BASE_URL = "https://tradingeconomics.com/"
 
-    def __init__(self, topics: Dict[str, List[str]]):
+    def __init__(self, topics: Dict[str, List[str]], callback: Callable = None):
         self.logger = logging.getLogger(__name__)
         self.topics = topics
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
+        self.callback = callback
         self._task = None
         
     def _construct_url(self, category, item):
@@ -38,22 +40,33 @@ class TradingEconomics:
     def _extract_data(self, html, category, item):
         """Extract data from HTML content."""
         soup = BeautifulSoup(html, 'html.parser')
-        data = {
-            "category": category,
-            "item": item,
-            "timestamp": asyncio.get_event_loop().time(),
-            "data": {}
-        }
         
         # Extract historical description
         historical_desc = soup.find('div', id='historical-desc')
+        full_text = ""
         if historical_desc:
             title_tag = historical_desc.find(['h2', 'h3'])
             if title_tag:
-                data["data"]["title"] = title_tag.text.strip()
+                full_text = title_tag.text.strip()
             
             paragraphs = historical_desc.find_all('p')
-            data["data"]["description"] = " ".join([p.text.strip() for p in paragraphs])
+            description = " ".join([p.text.strip() for p in paragraphs])
+        
+        # Extract title from content
+        title = self._extract_title_from_content(full_text)
+        
+        # Create formatted data structure
+        data = {
+            "category": category,
+            "item": item,
+            "timestamp": time.time(),
+            "title": title,
+            "content": full_text,
+            "raw_data": {
+                "description": description if 'description' in locals() else "",
+                "latest_values": {}
+            }
+        }
         
         # Extract statistics
         stats_div = soup.find('div', id='stats')
@@ -66,12 +79,11 @@ class TradingEconomics:
                     if len(cells) >= 2:
                         key = cells[0].text.strip().lower().replace(' ', '_')
                         value = cells[1].text.strip()
-                        data["data"][key] = value
+                        data["raw_data"][key] = value
         
         # Extract latest value
         latest_div = soup.find('div', {'class': 'table-responsive'})
         if latest_div:
-            data["data"]["latest_values"] = {}
             table = latest_div.find('table')
             if table:
                 rows = table.find_all('tr')
@@ -81,10 +93,32 @@ class TradingEconomics:
                     cells = row.find_all('td')
                     if len(cells) == len(headers):
                         for i, header in enumerate(headers):
-                            data["data"]["latest_values"][header] = cells[i].text.strip()
+                            data["raw_data"]["latest_values"][header] = cells[i].text.strip()
         
         return data
-    
+
+    def _extract_title_from_content(self, full_text):
+        """
+        Extract the first sentence as a title, properly handling decimal points.
+        """
+        # Define sentence-ending patterns (with space after punctuation)
+        end_patterns = ['. ', '! ', '? ', ': ']
+        
+        # Find the first occurrence of any end pattern
+        end_indices = []
+        for pattern in end_patterns:
+            pos = full_text.find(pattern)
+            if pos > 0:  # Found a valid position
+                end_indices.append(pos + len(pattern) - 1)  # Position at the punctuation mark
+        
+        if not end_indices:
+            # Fallback if no proper sentence ending is found
+            return full_text[:min(100, len(full_text))] + "..."
+        
+        # Get the earliest ending
+        first_end = min(end_indices)
+        return full_text[:first_end + 1]  # Include the punctuation mark
+
     async def scrape_all(self):
         tasks = []
         
@@ -99,8 +133,10 @@ class TradingEconomics:
         results = [data for data in results if data]
         
         for data in results:
-            pass
-            # print(data)
+            if self.callback:
+                await self.callback("Trading Economics", data)
+            else:
+                print(data)
         
         return results
     
