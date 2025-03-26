@@ -9,5 +9,7 @@ wheels/
 # Virtual environments
 .venv
 
+config.yml
 .env
+
 .DS_Store
