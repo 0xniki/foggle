@@ -1456,9 +1456,9 @@ class IB:
 
         # TEMPORARY
         if callback:
-            def tick_middleware(ticker_obj):
+            async def tick_middleware(ticker_obj):
                 formatted_data = self._format_tick_data(ticker_obj)
-                callback(formatted_data)
+                await callback(formatted_data)
             
             ticker.updateEvent.connect(tick_middleware)
         

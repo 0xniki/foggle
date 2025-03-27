@@ -125,52 +125,36 @@ class Database:
         # Group trades by contract to reduce number of contract lookups
         trades_by_contract = {}
         for trade in trades:
-            contract_key = str(trade['contract'])  # Use the contract dict as a key
+            contract_key = str(trade['contract'])
             if contract_key not in trades_by_contract:
                 trades_by_contract[contract_key] = []
             trades_by_contract[contract_key].append(trade)
         
-        # Process each contract group
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 for contract_key, contract_trades in trades_by_contract.items():
-                    # Get or create contract once per group
                     contract_data = contract_trades[0]['contract']
                     contract_id = await self.get_or_create_contract(contract_data)
-                    
-                    # Prepare values for bulk insert
+
                     values = []
                     for trade in contract_trades:
-                        # Convert unix milliseconds to timestamptz
                         timestamp = datetime.fromtimestamp(trade['timestamp'] / 1000.0)
-                        
-                        # Default trade_id to timestamp if not provided
-                        trade_id = trade.get('tid', int(trade['timestamp']))
-                        
-                        # Default to BUY side if not specified
-                        side = trade.get('side', 'BUY')
-                        # Map 'A' to 'SELL' and 'B' to 'BUY' if needed
-                        if side == 'A':
-                            side = 'SELL'
-                        elif side == 'B':
-                            side = 'BUY'
                         
                         values.append((
                             timestamp,
                             contract_id,
                             float(trade['price']),
                             float(trade['size']),
-                            side,
-                            'MARKET',  # Assuming all are market trades
-                            trade_id
+                            trade.get('side'),
+                            trade.get('type'),
+                            trade.get('tid')
                         ))
-                    
-                    # Use executemany for bulk insert
+
                     await conn.executemany(
                         """
                         INSERT INTO trades (time, contract_id, price, quantity, side, type, trade_id)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        ON CONFLICT (time, contract_id, trade_id) DO NOTHING
+                        ON CONFLICT (time, contract_id) DO NOTHING
                         """,
                         values
                     )

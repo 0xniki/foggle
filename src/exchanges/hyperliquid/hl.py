@@ -82,9 +82,9 @@ class HL:
         subscription = {f"type": "trades", "coin": symbol}
 
         # TEMPORARY
-        def forward_data(message):
+        async def forward_data(message):
             data = self._format_trade_data(message)
-            callback(data)
+            await callback(data)
         try:
             await self.info.subscribe(subscription=subscription, callback=forward_data)
             self._logger.info(f"Subscribed to trades for {symbol}")

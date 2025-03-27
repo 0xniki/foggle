@@ -36,10 +36,10 @@ CREATE TABLE trades (
     contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
     price NUMERIC NOT NULL,
     quantity NUMERIC NOT NULL,
-    side TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
-    type TEXT NOT NULL CHECK (type IN ('MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT', 'TRAIL')),
-    trade_id BIGINT NOT NULL,
-    PRIMARY KEY (time, contract_id, trade_id)
+    side TEXT CHECK (side IS NULL OR side IN ('B', 'A')),
+    type TEXT CHECK (type IS NULL OR type IN ('MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT', 'TRAIL')),
+    trade_id BIGINT,
+    PRIMARY KEY (time, contract_id)
 );
 
 SELECT create_hypertable('trades', 'time');

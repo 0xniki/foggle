@@ -92,7 +92,6 @@ def load_keys(path: str = '.env', key: str = None) -> Dict:
 async def test(ibkr, hyperliquid, te, db):
     te.start_scrape(interval=3600)
 
-    # Get news for the "government-bond-yield" subcategory
     news = await db.get_news_by_category("United States", "Stock Market", limit=2)
 
     print(news)
@@ -109,15 +108,15 @@ async def test(ibkr, hyperliquid, te, db):
     def print_tick(data):
         print(f"New tick: {data}")
 
-    ibkr.reqTickByTickData(contract=nq, tickType='AllLast', callback=print_tick)
+    ibkr.reqTickByTickData(contract=nq, tickType='AllLast', callback=db.insert_trades)
     await asyncio.sleep(2)
 
-    ibkr.reqTickByTickData(contract=spy, tickType='AllLast', callback=print_tick)
-    await asyncio.sleep(2)
+    # ibkr.reqTickByTickData(contract=spy, tickType='AllLast', callback=db.insert_trades)
+    # await asyncio.sleep(2)
 
-    res = await hyperliquid.info.open_orders("0x6d7823cd5c3d9dcd63e6a8021b475e0c7c94b291")
-    print(res)
+    # res = await hyperliquid.info.open_orders("0x6d7823cd5c3d9dcd63e6a8021b475e0c7c94b291")
+    # print(res)
     
-    await asyncio.sleep(2)
+    # await asyncio.sleep(2)
 
-    await hyperliquid.subscribe_trades(symbol="SOL", callback=print_tick)
+    await hyperliquid.subscribe_trades(symbol="SOL", callback=db.insert_trades)

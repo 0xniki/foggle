@@ -148,7 +148,7 @@ class WebsocketManager:
             print("Websocket message from an unexpected subscription:", message, identifier)
         else:
             for active_subscription in active_subscriptions:
-                active_subscription.callback(ws_msg)
+                await active_subscription.callback(ws_msg)
     
     async def subscribe(
         self, subscription: Subscription, callback: Callable[[Any], None], subscription_id: Optional[int] = None

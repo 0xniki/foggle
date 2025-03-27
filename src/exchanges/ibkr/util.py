@@ -28,7 +28,9 @@ class Event:
     def emit(self, *args, **kwargs) -> None:
         """Call all callbacks with the given arguments."""
         for callback in self.callbacks:
-            callback(*args, **kwargs)
+            result = callback(*args, **kwargs)
+            if result is not None and asyncio.iscoroutine(result):
+                asyncio.create_task(result)
     
     def value(self) -> Any:
         """Return the value stored by value_func."""
