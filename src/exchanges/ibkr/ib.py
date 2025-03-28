@@ -9,7 +9,7 @@ from enum import Flag, auto
 
 from src.exchanges.ibkr import util
 from .client import Client
-from .contract import Contract, ContractDescription, ContractDetails
+from .contract import Contract, ContractDescription, ContractDetails, Stock, Option, Future, Crypto
 from .objects import (
     AccountValue,
     BarDataList,
@@ -1428,6 +1428,13 @@ class IB:
                 "cancelMktData: " f"No reqId found for contract {contract}"
             )
 
+    async def subscribe_trades(self, contract: Dict, callback: Callable = None) -> Ticker:
+        try:
+            valid_contract = await self.validate_contract(contract)
+            return self.reqTickByTickData(contract=valid_contract, tickType='AllLast', callback=callback)
+        except Exception as e:
+            self._logger.error(f"Failed to subscribe to trades for {contract['symbol']}: {e}")
+
     def reqTickByTickData(
         self,
         contract: Contract,
@@ -1468,10 +1475,13 @@ class IB:
     @staticmethod
     def _format_tick_data(ticker: Ticker):
         contract = ticker.contract
+        exchange = contract.exchange
+        if exchange == "SMART":
+            exchange = contract.primaryExchange
         contract_info = {
             "symbol": contract.symbol,
             "expiration": contract.lastTradeDateOrContractMonth,
-            "exchange": contract.exchange,
+            "exchange": exchange,
             "currency": contract.currency,
             "secType": contract.secType
         }
@@ -2117,6 +2127,30 @@ class IB:
 
         return self
 
+    async def validate_contract(self, contract_dict: Dict) -> Contract:
+        contract = self.create_ib_contract(contract_dict)
+
+        if contract.secType == 'FUT' and not contract.lastTradeDateOrContractMonth:
+            front_month_contract = await self.get_front_month_contract(contract)
+            if front_month_contract:
+                return front_month_contract
+
+        elif contract.secType == 'OPT':
+            option_contracts = await self.qualifyContractsAsync(contract)
+            option_final = option_contracts[0]
+            return option_final
+
+        else:
+            possible_contracts = await self.reqContractDetailsAsync(contract)
+            if possible_contracts:
+                if len(possible_contracts) > 1:
+                    self._logger.info(f"Ambiguous contract, retrying with the first one: {possible_contracts[0].contract}")
+                qualified_contracts = await self.qualifyContractsAsync(possible_contracts[0].contract)
+                return qualified_contracts[0] if qualified_contracts else None
+            else:
+                self._logger.error(f"No valid contract found for {contract_dict}")
+                return None
+
     async def qualifyContractsAsync(self, *contracts: Contract) -> List[Contract]:
         detailsLists = await asyncio.gather(
             *(self.reqContractDetailsAsync(c) for c in contracts)
@@ -2140,6 +2174,69 @@ class IB:
                 result.append(contract)
 
         return result
+
+    @staticmethod
+    def create_ib_contract(contract_dict: Dict):
+        secType = contract_dict.get('secType')
+        exchange = contract_dict.get('exchange')
+        if exchange is None: 
+            exchange = 'SMART'
+
+        if secType == 'FUT':
+            return Future(
+                symbol=contract_dict.get('symbol'), 
+                exchange=exchange, 
+                currency=contract_dict.get('currency', 'USD'),
+                lastTradeDateOrContractMonth=contract_dict.get('expiration', '')
+            )
+        
+        elif secType == 'CRYPTO':
+            # Crypto always uses PAXOS as exchange
+            return Crypto(
+                symbol=contract_dict.get('symbol'), 
+                currency=contract_dict.get('currency', 'USD'), 
+                exchange=exchange
+            )
+        
+        elif secType == 'OPT':
+            return Option(
+                symbol=contract_dict.get('symbol'), 
+                lastTradeDateOrContractMonth=contract_dict.get('expiration'),
+                strike=contract_dict.get('strike'), 
+                right=contract_dict.get('right'), 
+                exchange=exchange, 
+                currency=contract_dict.get('currency', 'USD')
+            )
+        
+        elif secType == 'STK':
+            return Stock(
+                symbol=contract_dict.get('symbol'), 
+                exchange="SMART",
+                currency=contract_dict.get('currency', 'USD')
+            )
+
+        else:
+            raise ValueError(f"Unsupported contract type: {secType}")
+
+    async def get_front_month_contract(self, ib_contract: Contract, expiration_risk_days: int = 7):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        expiration_risk_date = now + datetime.timedelta(days=expiration_risk_days)
+        contracts = await self.reqContractDetailsAsync(Contract.Future(symbol=ib_contract.symbol, currency=ib_contract.currency))
+        filtered_contracts = [
+            (contract.contract, datetime.datetime.strptime(contract.contract.lastTradeDateOrContractMonth, '%Y%m%d').replace(tzinfo=datetime.timezone.utc)) 
+            for contract in contracts 
+            if datetime.datetime.strptime(contract.contract.lastTradeDateOrContractMonth, '%Y%m%d').replace(tzinfo=datetime.timezone.utc) > now
+        ]
+
+        filtered_contracts.sort(key=lambda x: x[1])
+        for contract_details, expiry in filtered_contracts:
+            if expiry > expiration_risk_date:
+                self._logger.info(f"Selected contract for {ib_contract.symbol}: {contract_details}")
+                contract_details.source = self._label
+                return contract_details
+
+        self._logger.error(f"No valid contract found for {ib_contract.symbol} that is not within the expiration risk of {expiration_risk_days} days.")
+        return None
 
     async def reqTickersAsync(
         self, *contracts: Contract, regulatorySnapshot: bool = False
@@ -2297,6 +2394,7 @@ class IB:
         chartOptions: List[TagValue] = [],
         timeout: float = 60,
     ) -> BarDataList:
+        contract = await self.validate_contract(contract)
         reqId = self.client.getReqId()
         bars = BarDataList()
         bars.reqId = reqId

@@ -77,9 +77,9 @@ class HL:
 
         self._logger.info("Disconnected from HyperLiquid")
 
-    async def subscribe_trades(self, symbol: str, callback: Callable):
-        self._logger.debug(f"Subscribing to trades for {symbol}")
-        subscription = {f"type": "trades", "coin": symbol}
+    async def subscribe_trades(self, contract: Dict, callback: Callable):
+        self._logger.debug(f"Subscribing to trades for {contract['symbol']}")
+        subscription = {f"type": "trades", "coin": contract['symbol']}
 
         # TEMPORARY
         async def forward_data(message):
@@ -87,9 +87,9 @@ class HL:
             await callback(data)
         try:
             await self.info.subscribe(subscription=subscription, callback=forward_data)
-            self._logger.info(f"Subscribed to trades for {symbol}")
+            self._logger.info(f"Subscribed to trades for {contract['symbol']}")
         except Exception as e:
-            self._logger.error(f"Failed to subscribe to trades for {symbol}: {e}")
+            self._logger.error(f"Failed to subscribe to trades for {contract['symbol']}: {e}")
     
     @staticmethod
     def _format_trade_data(message) -> List[Dict]:
@@ -98,9 +98,10 @@ class HL:
         for trade in message['data']:
             contract_info = {
                 "symbol": trade.get('coin', ''),
+                "secType": "PERP",
                 "exchange": "HYPERLIQUID",
+                "multiplier": 1,
                 "currency": "USD",
-                "secType": "CRYPTO"
             }
 
             formatted_trade = {

@@ -90,7 +90,6 @@ class Database:
             if contract:
                 contract_id = contract['id']
             else:
-                # Insert new contract
                 contract_id = await conn.fetchval(
                     """
                     INSERT INTO contracts 
@@ -102,10 +101,10 @@ class Database:
                     contract_data.get('secType'),
                     contract_data.get('exchange'),
                     contract_data.get('currency'),
-                    contract_data.get('multiplier', 1),  # Default multiplier to 1
-                    contract_data.get('expiration'),
-                    contract_data.get('strike'),
-                    contract_data.get('right')
+                    contract_data.get('multiplier') or 1,  # Default multiplier to 1
+                    contract_data.get('expiration') or None,
+                    contract_data.get('strike') or None,
+                    contract_data.get('right') or None
                 )
             
             # Update cache
@@ -145,9 +144,9 @@ class Database:
                             contract_id,
                             float(trade['price']),
                             float(trade['size']),
-                            trade.get('side'),
-                            trade.get('type'),
-                            trade.get('tid')
+                            trade.get('side', None),
+                            trade.get('type', None),
+                            trade.get('tid', None)
                         ))
 
                     await conn.executemany(

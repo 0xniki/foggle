@@ -10,7 +10,9 @@ from typing import Dict
 from src.api_manager import APIManager
 from src.store.timescaledb.db import Database
 from src.newswatch.trading_econ import TradingEconomics
-from src.exchanges.ibkr import contract, util
+from src.exchanges.ibkr import util
+from src.stream import Stream
+from src.feed import Feed
 
 
 class Foggle:
@@ -26,6 +28,8 @@ class Foggle:
     async def run(self) -> None:
         config = load_config()
 
+        feed = Feed()
+
         db = Database(config=config['TimescaleDB'])
         await db.init_pool()
 
@@ -36,10 +40,11 @@ class Foggle:
             "united-states": ["stock-market", "government-bond-yield", "inflation-cpi"]
         }
         te = TradingEconomics(topics=topics, callback=db.insert_news_item)
-        ibkr = self.api_manager.exchanges["IBKR"]
-        hyperliquid = self.api_manager.exchanges["HyperLiquid"]
 
-        await test(ibkr, hyperliquid, te, db)
+        streams = Stream(feed, db)
+        streams.add_exchanges(self.api_manager.exchanges)
+
+        await test(streams, te, db)
 
         try:
             task = asyncio.create_task(self.run_forever())
@@ -89,34 +94,62 @@ def load_keys(path: str = '.env', key: str = None) -> Dict:
     return os.getenv(key)
 
 
-async def test(ibkr, hyperliquid, te, db):
+async def test(stream: Stream, te: TradingEconomics, db: Database):
     te.start_scrape(interval=3600)
 
     news = await db.get_news_by_category("United States", "Stock Market", limit=2)
 
     print(news)
 
-    spy = contract.Future(symbol='MES', lastTradeDateOrContractMonth='202506', exchange='CME', currency='USD')
-    nq = contract.Future(symbol='NQ', lastTradeDateOrContractMonth='202506', exchange='CME', currency='USD')
-
-    bars = await ibkr.reqHistoricalDataAsync(
-        spy, endDateTime='', durationStr='30 D',
-        barSizeSetting='1 hour', whatToShow='MIDPOINT', useRTH=True)
-    df = util.df(bars)
-    print(df)
+    spy_stock = {
+        "symbol": "SPY",
+        "secType": "STK",
+        "exchange": "SMART",
+        "currency": "USD"
+        }
     
-    def print_tick(data):
-        print(f"New tick: {data}")
+    nq_fut = {
+        "symbol": "NQ",
+        "secType": "FUT",
+        "expiration": "20250620",
+        "exchange": "CME",
+        "currency": "USD"
+        }
 
-    ibkr.reqTickByTickData(contract=nq, tickType='AllLast', callback=db.insert_trades)
+    nvda_opt = {
+        "symbol": "NVDA",
+        "secType": "OPT",
+        "expiration": "20250404",
+        "strike": "112",
+        "right": "P",
+        "exchange": "SMART",
+        "currency": "USD"
+        }
+
+    sol_perp = {
+        "symbol": "SOL",
+        "secType": "CRYPTO",
+        "exchange": "HYPERLIQUID",
+        "currency": "USD"
+        }
+
+    # bars = await ibkr.reqHistoricalDataAsync(
+    #     nvda_opt, endDateTime='', durationStr='30 D',
+    #     barSizeSetting='1 hour', whatToShow='MIDPOINT', useRTH=True)
+    # df = util.df(bars)
+    # print(df)
+
+    await stream.subscribe_trades(exchange="IBKR", contract=nq_fut)
     await asyncio.sleep(2)
 
-    # ibkr.reqTickByTickData(contract=spy, tickType='AllLast', callback=db.insert_trades)
-    # await asyncio.sleep(2)
+
+
+    await stream.subscribe_trades(exchange="IBKR", contract=spy_stock)
+    await asyncio.sleep(2)
+
+    await stream.subscribe_trades(exchange="HyperLiquid", contract=sol_perp)
 
     # res = await hyperliquid.info.open_orders("0x6d7823cd5c3d9dcd63e6a8021b475e0c7c94b291")
     # print(res)
     
     # await asyncio.sleep(2)
-
-    await hyperliquid.subscribe_trades(symbol="SOL", callback=db.insert_trades)
