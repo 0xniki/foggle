@@ -46,70 +46,88 @@ class Database:
         Returns:
             contract_id: The ID of the contract
         """
-        # Create a cache key
+
+        multiplier = contract_data.get('multiplier')
+        if multiplier == '':
+            multiplier = 1
+        else:
+            multiplier = multiplier or 1
+            
+        expiration = contract_data.get('expiration')
+        expiration = None if expiration == '' else expiration
+        
+        right = contract_data.get('right')
+        right = None if right == '' else right
+        
+        strike = contract_data.get('strike')
+        strike = None if strike == '' else strike
+
         cache_key = (
             contract_data.get('symbol', ''),
             contract_data.get('secType', ''),
             contract_data.get('exchange', ''),
-            contract_data.get('expiration', '')
+            contract_data.get('currency', ''),
+            multiplier,
+            expiration,
+            right,
+            strike
         )
-        
-        # Check cache first
+
         if cache_key in self._contract_cache:
             return self._contract_cache[cache_key]
         
-        # If not in cache, check database
+        # Create a unique lock key based on contract details
+        lock_key = f"contract_lock:{contract_data.get('symbol')}:{contract_data.get('secType')}:{contract_data.get('exchange')}"
+        lock_hash = abs(hash(lock_key)) % (2**31 - 1)  # Positive int32 for pg_advisory_xact_lock
+        
         async with self.pool.acquire() as conn:
-            # Build query based on contract type
-            if contract_data.get('secType') == 'FUT':
-                # For futures, include expiration
-                contract = await conn.fetchrow(
+            # Use PostgreSQL advisory lock to ensure only one process can create this contract at a time
+            async with conn.transaction():
+                # Get an advisory lock (this will block other concurrent operations with the same key)
+                await conn.execute(f"SELECT pg_advisory_xact_lock({lock_hash})")
+                
+                # Now safely check if the contract exists
+                existing = await conn.fetchrow(
                     """
                     SELECT id FROM contracts 
                     WHERE symbol = $1 AND sec_type = $2 AND exchange = $3 
-                    AND currency = $4 AND expiration = $5
+                    AND currency = $4 AND multiplier = $5 
+                    AND expiration IS NOT DISTINCT FROM $6
+                    AND option_right IS NOT DISTINCT FROM $7
+                    AND strike IS NOT DISTINCT FROM $8
                     """,
                     contract_data.get('symbol'),
                     contract_data.get('secType'),
                     contract_data.get('exchange'),
                     contract_data.get('currency'),
-                    contract_data.get('expiration')
+                    multiplier,
+                    expiration,
+                    right,
+                    strike
                 )
-            else:
-                # For crypto and stocks without expiration
-                contract = await conn.fetchrow(
-                    """
-                    SELECT id FROM contracts 
-                    WHERE symbol = $1 AND sec_type = $2 AND exchange = $3 
-                    AND currency = $4 AND expiration IS NULL
-                    """,
-                    contract_data.get('symbol'),
-                    contract_data.get('secType'),
-                    contract_data.get('exchange'),
-                    contract_data.get('currency')
-                )
-            
-            if contract:
-                contract_id = contract['id']
-            else:
-                contract_id = await conn.fetchval(
-                    """
-                    INSERT INTO contracts 
-                    (symbol, sec_type, exchange, currency, multiplier, expiration, strike, option_right)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    RETURNING id
-                    """,
-                    contract_data.get('symbol'),
-                    contract_data.get('secType'),
-                    contract_data.get('exchange'),
-                    contract_data.get('currency'),
-                    contract_data.get('multiplier') or 1,  # Default multiplier to 1
-                    contract_data.get('expiration') or None,
-                    contract_data.get('strike') or None,
-                    contract_data.get('right') or None
-                )
-            
-            # Update cache
+                
+                if existing:
+                    self._logger.debug(f"Found existing contract ID: {existing['id']}")
+                    contract_id = existing['id']
+                else:
+                    self._logger.debug(f"Creating new contract for {contract_data.get('symbol')}")
+                    contract_id = await conn.fetchval(
+                        """
+                        INSERT INTO contracts 
+                        (symbol, sec_type, exchange, currency, multiplier, expiration, option_right, strike)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        RETURNING id
+                        """,
+                        contract_data.get('symbol'),
+                        contract_data.get('secType'),
+                        contract_data.get('exchange'),
+                        contract_data.get('currency'),
+                        multiplier,
+                        expiration,
+                        right,
+                        strike
+                    )
+
             self._contract_cache[cache_key] = contract_id
             return contract_id
 
@@ -178,7 +196,7 @@ class Database:
                         'bid',
                         float(bid['price']),
                         float(bid['qty']),
-                        bid.get('orders'),
+                        bid.get('orders', None),
                         level
                     ))
                 
@@ -190,7 +208,7 @@ class Database:
                         'ask',
                         float(ask['price']),
                         float(ask['qty']),
-                        ask.get('orders'),
+                        ask.get('orders', None),
                         level
                     ))
                 

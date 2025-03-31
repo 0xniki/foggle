@@ -45,6 +45,7 @@ class Foggle:
         te = TradingEconomics(topics=topics, callback=db.insert_news_item)
 
         await self._wait_for_confirmation()
+
         await test(streams, te, db)
 
         try:
@@ -102,10 +103,10 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
 
     print(news)
 
-    spy_stock = {
-        "symbol": "SPY",
+    aapl_stock = {
+        "symbol": "AAPL",
         "secType": "STK",
-        "exchange": "SMART",
+        "exchange": "IEX",
         "currency": "USD"
         }
     
@@ -129,8 +130,15 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
 
     eth_perp = {
         "symbol": "ETH",
-        "secType": "CRYPTO",
+        "secType": "PERP",
         "exchange": "HYPERLIQUID",
+        "currency": "USD"
+        }
+    
+    eth_spot = {
+        "symbol": "ETH",
+        "secType": "CRYPTO",
+        "exchange": "PAXOS",
         "currency": "USD"
         }
 
@@ -141,7 +149,11 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
     # print(df)
 
     await stream.subscribe_trades(exchange="IBKR", contract=nq_fut)
-    # await stream.subscribe_trades(exchange="IBKR", contract=spy_stock)
+    await stream.subscribe_orderbook(exchange="IBKR", contract=nq_fut)
+    await stream.subscribe_trades(exchange="IBKR", contract=aapl_stock)
+    await stream.subscribe_orderbook(exchange="IBKR", contract=aapl_stock)
+    await stream.subscribe_trades(exchange="IBKR", contract=eth_spot)
+    await stream.subscribe_orderbook(exchange="IBKR", contract=eth_spot)
 
     await stream.subscribe_trades(exchange="HyperLiquid", contract=eth_perp)
     await stream.subscribe_orderbook(exchange="HyperLiquid", contract=eth_perp)

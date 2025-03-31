@@ -36,6 +36,9 @@ class Event:
         """Return the value stored by value_func."""
         return self.value_func()
 
+    def set_done(self):
+        """Mark this event as done by clearing callbacks."""
+        self.callbacks = []
 
 # Global error event
 globalErrorEvent = Event("globalError")

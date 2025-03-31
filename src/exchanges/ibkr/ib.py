@@ -1483,6 +1483,7 @@ class IB:
             "expiration": contract.lastTradeDateOrContractMonth,
             "exchange": exchange,
             "currency": contract.currency,
+            "multiplier": contract.multiplier,
             "secType": contract.secType
         }
 
@@ -1531,6 +1532,24 @@ class IB:
         """
         return self._run(self.reqMktDepthExchangesAsync())
 
+    async def subscribe_orderbook(self, contract: Dict, callback: Callable = None, numRows: int = 5) -> Ticker:
+        try:
+            valid_contract = await self.validate_contract(contract)
+            ticker = self.reqMktDepth(contract=valid_contract, numRows=numRows)
+            
+            # TEMPORARY
+            if callback:
+                async def depth_middleware(ticker_obj):
+                    formatted_data = self._format_orderbook_data(ticker_obj)
+                    await callback(formatted_data)
+                
+                ticker.updateEvent.connect(depth_middleware)
+            
+            self._logger.info(f"Subscribed to orderbook for {valid_contract.symbol}")
+            return ticker
+        except Exception as e:
+            self._logger.error(f"Failed to subscribe to orderbook for {contract['symbol']}: {e}")
+
     def reqMktDepth(
         self,
         contract: Contract,
@@ -1563,6 +1582,37 @@ class IB:
         ticker.domAsksDict.clear()
         self.client.reqMktDepth(reqId, contract, numRows, isSmartDepth, mktDepthOptions)
         return ticker
+
+    @staticmethod
+    def _format_orderbook_data(ticker: Ticker):
+        contract = ticker.contract
+        exchange = contract.exchange
+        if exchange == "SMART":
+            exchange = contract.primaryExchange
+        contract_info = {
+            "symbol": contract.symbol,
+            "expiration": contract.lastTradeDateOrContractMonth,
+            "exchange": exchange,
+            "currency": contract.currency,
+            "multiplier": contract.multiplier,
+            "secType": contract.secType
+        }
+
+        timestamp = int(ticker.time.timestamp() * 1000) if ticker.time else int(time.time() * 1000)
+        
+        # Sort bids by price descending (highest bid first)
+        sorted_bids = sorted(ticker.domBids, key=lambda x: x.price, reverse=True)
+        # Sort asks by price ascending (lowest ask first)
+        sorted_asks = sorted(ticker.domAsks, key=lambda x: x.price)
+        
+        formatted_data = {
+            "contract": contract_info,
+            "timestamp": timestamp,
+            "bids": [{"price": bid.price, "qty": bid.size} for bid in sorted_bids],
+            "asks": [{"price": ask.price, "qty": ask.size} for ask in sorted_asks]
+        }
+        
+        return formatted_data
 
     def cancelMktDepth(self, contract: Contract, isSmartDepth=False):
         """
@@ -2178,9 +2228,7 @@ class IB:
     @staticmethod
     def create_ib_contract(contract_dict: Dict):
         secType = contract_dict.get('secType')
-        exchange = contract_dict.get('exchange')
-        if exchange is None: 
-            exchange = 'SMART'
+        exchange = contract_dict.get('exchange', 'SMART')
 
         if secType == 'FUT':
             return Future(
@@ -2211,7 +2259,7 @@ class IB:
         elif secType == 'STK':
             return Stock(
                 symbol=contract_dict.get('symbol'), 
-                exchange="SMART",
+                exchange=exchange,
                 currency=contract_dict.get('currency', 'USD')
             )
 

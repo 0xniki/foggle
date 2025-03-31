@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from typing import Dict, List
@@ -44,3 +43,4 @@ class Stream:
 
     async def _orderbook_callback(self, orderbook: Dict):
         await self.db.insert_orderbook(orderbook)
+        # print(orderbook)

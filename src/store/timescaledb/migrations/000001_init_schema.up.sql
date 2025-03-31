@@ -10,7 +10,8 @@ CREATE TABLE contracts (
     expiration NUMERIC,
     option_right TEXT,
     strike NUMERIC,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (symbol, sec_type, exchange, currency, multiplier, expiration, option_right, strike)
 );
 
 CREATE INDEX idx_contracts_symbol ON contracts(symbol);
