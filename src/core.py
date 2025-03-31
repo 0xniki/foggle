@@ -44,6 +44,7 @@ class Foggle:
         }
         te = TradingEconomics(topics=topics, callback=db.insert_news_item)
 
+        await self._wait_for_confirmation()
         await test(streams, te, db)
 
         try:

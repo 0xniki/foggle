@@ -107,7 +107,7 @@ class WebsocketManager:
             await self.websocket.close()
         
         if self.ping_task:
-            await self.ping_task
+            self.ping_task.cancel()
         if self.ws_task:
             await self.ws_task
             

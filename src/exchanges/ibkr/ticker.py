@@ -220,6 +220,10 @@ class TickerUpdateEvent(Event):
     def midpoints(self) -> "Tickfilter":
         """Emit midpoint ticks."""
         return Midpoints((), self)
+    
+    def set_done(self):
+        """Mark this event as done by clearing callbacks."""
+        self.callbacks = []
 
 
 class Tickfilter(Op):
