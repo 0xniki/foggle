@@ -33,16 +33,16 @@ class Foggle:
         db = Database(config=config['TimescaleDB'])
         await db.init_pool()
 
-        await self.api_manager.start(config=config)
+        await self.api_manager.start(config)
+
+        streams = Stream(feed, db)
+        streams.add_exchanges(self.api_manager.exchanges)
 
         topics = {
             "commodity": ["crude-oil", "gold"],
             "united-states": ["stock-market", "government-bond-yield", "inflation-cpi"]
         }
         te = TradingEconomics(topics=topics, callback=db.insert_news_item)
-
-        streams = Stream(feed, db)
-        streams.add_exchanges(self.api_manager.exchanges)
 
         await test(streams, te, db)
 
@@ -126,8 +126,8 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
         "currency": "USD"
         }
 
-    sol_perp = {
-        "symbol": "SOL",
+    eth_perp = {
+        "symbol": "ETH",
         "secType": "CRYPTO",
         "exchange": "HYPERLIQUID",
         "currency": "USD"
@@ -140,14 +140,10 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
     # print(df)
 
     await stream.subscribe_trades(exchange="IBKR", contract=nq_fut)
-    await asyncio.sleep(2)
+    # await stream.subscribe_trades(exchange="IBKR", contract=spy_stock)
 
-
-
-    await stream.subscribe_trades(exchange="IBKR", contract=spy_stock)
-    await asyncio.sleep(2)
-
-    await stream.subscribe_trades(exchange="HyperLiquid", contract=sol_perp)
+    await stream.subscribe_trades(exchange="HyperLiquid", contract=eth_perp)
+    await stream.subscribe_orderbook(exchange="HyperLiquid", contract=eth_perp)
 
     # res = await hyperliquid.info.open_orders("0x6d7823cd5c3d9dcd63e6a8021b475e0c7c94b291")
     # print(res)

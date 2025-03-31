@@ -29,6 +29,7 @@ class Info(API):
         self.coin_to_asset = {}
         self.name_to_coin = {}
         self.asset_to_sz_decimals = {}
+        self.coin_to_max_leverage = {}
         self._initialized = False
     
     async def initialize(self, meta: Optional[Meta] = None, spot_meta: Optional[SpotMeta] = None):
@@ -50,6 +51,8 @@ class Info(API):
             self.coin_to_asset[asset_info["name"]] = asset
             self.name_to_coin[asset_info["name"]] = asset_info["name"]
             self.asset_to_sz_decimals[asset] = asset_info["szDecimals"]
+            if "maxLeverage" in asset_info:
+                self.coin_to_max_leverage[asset_info["name"]] = asset_info["maxLeverage"]
 
         # Process spot metadata (assets start at 10000)
         for spot_info in spot_meta["universe"]:
@@ -606,3 +609,7 @@ class Info(API):
     def name_to_asset(self, name: str) -> int:
         """Convert a name to an asset ID"""
         return self.coin_to_asset[self.name_to_coin[name]]
+
+    def get_max_leverage(self, name: str) -> Optional[int]:
+        """Get the max leverage for a given coin name"""
+        return self.coin_to_max_leverage.get(self.name_to_coin.get(name, name), None)

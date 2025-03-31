@@ -1493,7 +1493,7 @@ class IB:
                 "contract": contract_info,
                 "timestamp": int(tick.time.timestamp() * 1000),  # Unix epoch in milliseconds
                 "price": tick.price,
-                "size": tick.size,
+                "qty": tick.size,
             }
             
             formatted_ticks.append(formatted_tick)

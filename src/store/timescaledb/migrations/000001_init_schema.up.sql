@@ -47,25 +47,15 @@ SELECT create_hypertable('trades', 'time');
 CREATE TABLE orderbook_snapshots (
     time TIMESTAMPTZ NOT NULL,
     contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
-    snapshot_id BIGINT NOT NULL,
-    PRIMARY KEY (time, contract_id, snapshot_id)
+    side TEXT NOT NULL CHECK (side IN ('bid', 'ask')),
+    price NUMERIC NOT NULL,
+    quantity NUMERIC NOT NULL,
+    orders INTEGER,
+    level INTEGER NOT NULL,
+    PRIMARY KEY (time, contract_id, side, level)
 );
 
 SELECT create_hypertable('orderbook_snapshots', 'time');
-
-CREATE TABLE orderbook_entries (
-    id BIGSERIAL PRIMARY KEY,
-    time TIMESTAMPTZ NOT NULL,
-    contract_id INTEGER NOT NULL,
-    snapshot_id BIGINT NOT NULL,
-    price NUMERIC NOT NULL,
-    quantity NUMERIC NOT NULL,
-    side TEXT NOT NULL CHECK (side IN ('BID', 'ASK')),
-    level INTEGER NOT NULL,
-    FOREIGN KEY (time, contract_id, snapshot_id) REFERENCES orderbook_snapshots(time, contract_id, snapshot_id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_orderbook_entries_reference ON orderbook_entries(time, contract_id, snapshot_id);
 
 CREATE TABLE news_categories (
     id SERIAL PRIMARY KEY,

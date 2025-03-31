@@ -58,6 +58,25 @@ class HL:
         await exchange.shutdown()
         self._logger.info("Connected to HyperLiquid")
 
+    async def _setup(self, base_url=None, key=None, address=None, skip_ws=False):
+        account: LocalAccount = eth_account.Account.from_key(key)
+        if address == "":
+            address = account.address
+        self._logger.info(f"Running with account address: {address}")
+        if address != account.address:
+            self._logger.info(f"Running with agent address: {account.address}")
+        info = Info(base_url, skip_ws)
+        user_state = await info.user_state(address)
+        spot_user_state = await info.spot_user_state(address)
+        margin_summary = user_state["marginSummary"]
+        if float(margin_summary["accountValue"]) == 0 and len(spot_user_state["balances"]) == 0:
+            self._logger.error("Not running the example because the provided account has no equity.")
+            url = info.base_url.split(".", 1)[1]
+            error_string = f"No accountValue:\nIf you think this is a mistake, make sure that {address} has a balance on {url}.\nIf address shown is your API wallet address, update the config to specify the address of your account, not the address of the API wallet."
+            raise Exception(error_string)
+        exchange = Exchange(wallet=account, base_url=base_url, account_address=address)
+        return address, info, exchange
+
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
         if self.exchange:
@@ -91,16 +110,15 @@ class HL:
         except Exception as e:
             self._logger.error(f"Failed to subscribe to trades for {contract['symbol']}: {e}")
     
-    @staticmethod
-    def _format_trade_data(message) -> List[Dict]:
+    def _format_trade_data(self, message: List[Dict]) -> List[Dict]:
         formatted_trades = []
         
         for trade in message['data']:
             contract_info = {
-                "symbol": trade.get('coin', ''),
+                "symbol": trade['coin'],
                 "secType": "PERP",
                 "exchange": "HYPERLIQUID",
-                "multiplier": 1,
+                "multiplier": self.info.get_max_leverage(name=trade['coin']),
                 "currency": "USD",
             }
 
@@ -108,7 +126,7 @@ class HL:
                 "contract": contract_info,
                 "timestamp": trade.get('time', 0),
                 "price": float(trade.get('px', 0)),
-                "size": float(trade.get('sz', 0)),
+                "qty": float(trade.get('sz', 0)),
                 "side": trade.get('side', ''),  # 'B' for buy, 'A' for ask/sell
                 "hash": trade.get('hash', ''),
                 "tid": trade.get('tid', 0),
@@ -119,24 +137,62 @@ class HL:
         
         return formatted_trades
 
-    async def _setup(self, base_url=None, key=None, address=None, skip_ws=False):
-        account: LocalAccount = eth_account.Account.from_key(key)
-        if address == "":
-            address = account.address
-        self._logger.info(f"Running with account address: {address}")
-        if address != account.address:
-            self._logger.info(f"Running with agent address: {account.address}")
-        info = Info(base_url, skip_ws)
-        user_state = await info.user_state(address)
-        spot_user_state = await info.spot_user_state(address)
-        margin_summary = user_state["marginSummary"]
-        if float(margin_summary["accountValue"]) == 0 and len(spot_user_state["balances"]) == 0:
-            self._logger.error("Not running the example because the provided account has no equity.")
-            url = info.base_url.split(".", 1)[1]
-            error_string = f"No accountValue:\nIf you think this is a mistake, make sure that {address} has a balance on {url}.\nIf address shown is your API wallet address, update the config to specify the address of your account, not the address of the API wallet."
-            raise Exception(error_string)
-        exchange = Exchange(wallet=account, base_url=base_url, account_address=address)
-        return address, info, exchange
+    async def subscribe_orderbook(self, contract: Dict, callback: Callable):
+        self._logger.debug(f"Subscribing to orderbook for {contract['symbol']}")
+        subscription = {"type": "l2Book", "coin": contract['symbol']}
+
+        async def forward_data(message):
+            data = self._format_orderbook_data(message)
+            await callback(data)
+        
+        try:
+            await self.info.subscribe(subscription=subscription, callback=forward_data)
+            self._logger.info(f"Subscribed to orderbook for {contract['symbol']}")
+        except Exception as e:
+            self._logger.error(f"Failed to subscribe to orderbook for {contract['symbol']}: {e}")
+
+    def _format_orderbook_data(self, message: Dict) -> Dict:
+        data = message.get('data', {})
+
+        contract_info = {
+            "symbol": data['coin'],
+            "secType": "PERP",
+            "exchange": "HYPERLIQUID",
+            "multiplier": self.info.get_max_leverage(name=data['coin']),
+            "currency": "USD",
+        }
+
+        formatted_data = {
+            "contract": contract_info,
+            "timestamp": data['time'],
+            "bids": [],
+            "asks": []
+        }
+        
+        if 'levels' in data and len(data['levels']) == 2:
+            # Bids are at index 0, asks at index 1
+            bids = data['levels'][0]
+            asks = data['levels'][1]
+            
+            formatted_data["bids"] = [
+                {
+                    "price": float(level['px']),
+                    "qty": float(level['sz']),
+                    "orders": level['n']
+                } 
+                for level in bids
+            ]
+            
+            formatted_data["asks"] = [
+                {
+                    "price": float(level['px']),
+                    "qty": float(level['sz']),
+                    "orders": level['n']
+                } 
+                for level in asks
+            ]
+        
+        return formatted_data
 
     # @staticmethod
     # def _setup_multi_sig_wallets():

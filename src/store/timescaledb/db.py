@@ -1,8 +1,8 @@
-import asyncio
 import asyncpg
 import hashlib
+import logging
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple, Optional
 
 
@@ -23,7 +23,9 @@ class Database:
         self.dsn = f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
         self.pool = None
+
         self._contract_cache = {}
+        self._logger = logging.getLogger("db")
 
     async def init_pool(self):
         """Initialize the connection pool"""
@@ -143,7 +145,7 @@ class Database:
                             timestamp,
                             contract_id,
                             float(trade['price']),
-                            float(trade['size']),
+                            float(trade['qty']),
                             trade.get('side', None),
                             trade.get('type', None),
                             trade.get('tid', None)
@@ -157,6 +159,53 @@ class Database:
                         """,
                         values
                     )
+
+    async def insert_orderbook(self, orderbook_data: Dict[str, Any]):
+        if not orderbook_data:
+            return
+            
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                contract_data = orderbook_data['contract']
+                contract_id = await self.get_or_create_contract(contract_data)
+                timestamp = datetime.fromtimestamp(orderbook_data['timestamp'] / 1000.0, tz=timezone.utc)
+                
+                bid_values = []
+                for level, bid in enumerate(orderbook_data['bids']):
+                    bid_values.append((
+                        timestamp,
+                        contract_id,
+                        'bid',
+                        float(bid['price']),
+                        float(bid['qty']),
+                        bid.get('orders'),
+                        level
+                    ))
+                
+                ask_values = []
+                for level, ask in enumerate(orderbook_data['asks']):
+                    ask_values.append((
+                        timestamp,
+                        contract_id,
+                        'ask',
+                        float(ask['price']),
+                        float(ask['qty']),
+                        ask.get('orders'),
+                        level
+                    ))
+                
+                values = bid_values + ask_values
+                
+                await conn.executemany(
+                    """
+                    INSERT INTO orderbook_snapshots 
+                    (time, contract_id, side, price, quantity, orders, level)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    ON CONFLICT (time, contract_id, side, level) 
+                    DO UPDATE SET price = $4, quantity = $5, orders = $6
+                    """,
+                    values
+                )
 
     async def insert_news_item(self, source: str, news_data: Dict):
         """

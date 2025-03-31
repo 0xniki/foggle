@@ -29,5 +29,18 @@ class Stream:
         except Exception as e:
             self._logger.error(e)
 
+    async def subscribe_orderbook(self, exchange: str, contract: Dict) -> None:
+        try:
+            exchange = self.exchanges.get(exchange)
+            if not exchange:
+                self._logger.warning(f"{exchange} was not found in directory.")
+                return
+            await exchange.subscribe_orderbook(contract, self._orderbook_callback)
+        except Exception as e:
+            self._logger.error(e)
+
     async def _trades_callback(self, trades: List):
         await self.db.insert_trades(trades)
+
+    async def _orderbook_callback(self, orderbook: Dict):
+        await self.db.insert_orderbook(orderbook)
