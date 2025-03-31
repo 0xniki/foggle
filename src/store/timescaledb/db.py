@@ -60,7 +60,8 @@ class Database:
         right = None if right == '' else right
         
         strike = contract_data.get('strike')
-        strike = None if strike == '' else strike
+        if strike == '' or strike == 0 or strike is None:
+            strike = None
 
         cache_key = (
             contract_data.get('symbol', ''),

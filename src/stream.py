@@ -40,6 +40,7 @@ class Stream:
 
     async def _trades_callback(self, trades: List):
         await self.db.insert_trades(trades)
+        # print(trades)
 
     async def _orderbook_callback(self, orderbook: Dict):
         await self.db.insert_orderbook(orderbook)

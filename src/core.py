@@ -124,7 +124,7 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
         "expiration": "20250404",
         "strike": "112",
         "right": "P",
-        "exchange": "SMART",
+        "exchange": "AMEX",
         "currency": "USD"
         }
 
@@ -154,6 +154,7 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
     await stream.subscribe_orderbook(exchange="IBKR", contract=aapl_stock)
     await stream.subscribe_trades(exchange="IBKR", contract=eth_spot)
     await stream.subscribe_orderbook(exchange="IBKR", contract=eth_spot)
+    # await stream.subscribe_orderbook(exchange="IBKR", contract=nvda_opt)
 
     await stream.subscribe_trades(exchange="HyperLiquid", contract=eth_perp)
     await stream.subscribe_orderbook(exchange="HyperLiquid", contract=eth_perp)

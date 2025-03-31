@@ -1595,7 +1595,9 @@ class IB:
             "exchange": exchange,
             "currency": contract.currency,
             "multiplier": contract.multiplier,
-            "secType": contract.secType
+            "secType": contract.secType,
+            "right": contract.right,
+            "strike": contract.strike
         }
 
         timestamp = int(ticker.time.timestamp() * 1000) if ticker.time else int(time.time() * 1000)
