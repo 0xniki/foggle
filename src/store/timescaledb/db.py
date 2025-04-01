@@ -305,7 +305,7 @@ class Database:
                 
                 # Only insert completed bars
                 bars = candle_data['bars']
-                completed_bars = bars[:-1] if len(bars) > 1 else bars
+                completed_bars = bars[:-1] if len(bars) > 1 else []
                 
                 values = []
                 for bar in completed_bars:

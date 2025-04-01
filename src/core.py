@@ -161,12 +161,14 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
     await stream.subscribe_candles(exchange="IBKR", contract=eth_spot, 
                                    duration='120 S', interval='1 min')
     
-    await stream.subscribe_orderbook(exchange="IBKR", contract=nvda_opt)
-    await stream.subscribe_candles(exchange="IBKR", contract=nvda_opt, 
-                                   duration='120 S', interval='1 min')
+    # await stream.subscribe_orderbook(exchange="IBKR", contract=nvda_opt)
+    # await stream.subscribe_candles(exchange="IBKR", contract=nvda_opt, 
+    #                                duration='120 S', interval='1 min')
 
     await stream.subscribe_trades(exchange="HyperLiquid", contract=eth_perp)
     await stream.subscribe_orderbook(exchange="HyperLiquid", contract=eth_perp)
+    await stream.subscribe_candles(exchange="HyperLiquid", contract=eth_perp, 
+                                   duration='120 S', interval='1 min')
 
     # res = await hyperliquid.info.open_orders("0x6d7823cd5c3d9dcd63e6a8021b475e0c7c94b291")
     # print(res)

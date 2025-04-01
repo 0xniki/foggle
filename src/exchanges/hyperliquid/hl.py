@@ -1,3 +1,4 @@
+import time
 import logging
 
 import eth_account
@@ -17,6 +18,8 @@ class HL:
         self.info: Info = None
         self.exchange: Exchange = None
         self.address: str = None
+
+        self._candle_cache = {}
 
         # self.topics = {
         #     "trades": self.msg_callback,
@@ -192,6 +195,124 @@ class HL:
                 for level in asks
             ]
         
+        return formatted_data
+
+    async def subscribe_candles(self, contract: Dict, callback: Callable, duration: str = '1 W', 
+                            interval: str = '1 min'):
+        """
+        Subscribe to candle/OHLC data for a hyperliquid market
+        
+        Args:
+            contract: Contract dictionary with market details
+            callback: Callback function to process received data
+            duration: Not used for hyperliquid (only needed for IBKR)
+            interval: Candle interval e.g. '1m', '5m', '15m', '1h', '4h', '1d'
+        """
+        self._logger.debug(f"Subscribing to candles for {contract['symbol']}")
+        
+        # Convert interval format from IBKR style to hyperliquid style
+        hl_interval = self._convert_interval_format(interval)
+        
+        subscription = {
+            "type": "candle", 
+            "coin": contract['symbol'], 
+            "interval": hl_interval
+        }
+
+        async def forward_data(message):
+            data = self._format_candle_data(message, contract, interval)
+            await callback(data)
+        
+        try:
+            await self.info.subscribe(subscription=subscription, callback=forward_data)
+            self._logger.info(f"Subscribed to candles for {contract['symbol']}")
+        except Exception as e:
+            self._logger.error(f"Failed to subscribe to candles for {contract['symbol']}: {e}")
+
+    def _convert_interval_format(self, ibkr_interval: str) -> str:
+        """Convert IBKR interval format to hyperliquid format"""
+        # Map common IBKR intervals to hyperliquid intervals
+        interval_map = {
+            '1 min': '1m',
+            '5 mins': '5m',
+            '15 mins': '15m',
+            '1 hour': '1h',
+            '4 hours': '4h',
+            '1 day': '1d',
+        }
+        
+        if ibkr_interval in interval_map:
+            return interval_map[ibkr_interval]
+        
+        # If not found, try a simple conversion
+        if 'min' in ibkr_interval:
+            minutes = ibkr_interval.split(' ')[0]
+            return f"{minutes}m"
+        elif 'hour' in ibkr_interval:
+            hours = ibkr_interval.split(' ')[0]
+            return f"{hours}h"
+        
+        # Default to 1m if can't convert
+        self._logger.warning(f"Unknown interval format: {ibkr_interval}, defaulting to 1m")
+        return "1m"
+
+    def _format_candle_data(self, message: Dict, contract: Dict, interval: str) -> Dict:
+        """
+        Format candle data to match IBKR format, handling the case where
+        we might get updates for the same time period.
+        """
+        candle = message.get('data')
+        if not candle or not isinstance(candle, dict):
+            return None
+        
+        contract_info = {
+            "symbol": contract['symbol'],
+            "secType": "PERP",
+            "exchange": "HYPERLIQUID",
+            "multiplier": self.info.get_max_leverage(name=contract['symbol']),
+            "currency": "USD",
+        }
+        
+        # Create a cache key for this symbol and interval
+        cache_key = f"{contract['symbol']}-{interval}"
+        
+        # Current candle timestamp and data
+        current_time = candle['t']
+        current_candle = {
+            "time": current_time,
+            "open": float(candle['o']),
+            "high": float(candle['h']),
+            "low": float(candle['l']),
+            "close": float(candle['c']),
+            "volume": float(candle['v'])
+        }
+        
+        # Initialize the cache if needed
+        if cache_key not in self._candle_cache:
+            self._candle_cache[cache_key] = []
+        
+        candles = self._candle_cache[cache_key]
+        
+        # Logic similar to the Bybit handler
+        if candles and candles[-1]["time"] == current_time:
+            # Update the latest candle as it's for the same time period
+            candles[-1] = current_candle
+        else:
+            # This is a new candle, add it to our list
+            candles.append(current_candle)
+            # Keep only the most recent 2 candles (or more if needed)
+            if len(candles) > 2:
+                candles.pop(0)
+        
+        # Create the formatted data structure
+        formatted_data = {
+            "contract": contract_info,
+            "timestamp": int(time.time() * 1000),
+            "interval": interval,
+            "bars": list(candles)  # Create a copy of the list
+        }
+        
+        print(formatted_data)
         return formatted_data
 
     # @staticmethod
