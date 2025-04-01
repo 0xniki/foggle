@@ -150,11 +150,20 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
 
     await stream.subscribe_trades(exchange="IBKR", contract=nq_fut)
     await stream.subscribe_orderbook(exchange="IBKR", contract=nq_fut)
-    await stream.subscribe_trades(exchange="IBKR", contract=aapl_stock)
-    await stream.subscribe_orderbook(exchange="IBKR", contract=aapl_stock)
+    await stream.subscribe_candles(exchange="IBKR", contract=nq_fut, 
+                                   duration='120 S', interval='1 min')
+    
+    # await stream.subscribe_trades(exchange="IBKR", contract=aapl_stock)
+    # await stream.subscribe_orderbook(exchange="IBKR", contract=aapl_stock)
+
     await stream.subscribe_trades(exchange="IBKR", contract=eth_spot)
     await stream.subscribe_orderbook(exchange="IBKR", contract=eth_spot)
-    # await stream.subscribe_orderbook(exchange="IBKR", contract=nvda_opt)
+    await stream.subscribe_candles(exchange="IBKR", contract=eth_spot, 
+                                   duration='120 S', interval='1 min')
+    
+    await stream.subscribe_orderbook(exchange="IBKR", contract=nvda_opt)
+    await stream.subscribe_candles(exchange="IBKR", contract=nvda_opt, 
+                                   duration='120 S', interval='1 min')
 
     await stream.subscribe_trades(exchange="HyperLiquid", contract=eth_perp)
     await stream.subscribe_orderbook(exchange="HyperLiquid", contract=eth_perp)

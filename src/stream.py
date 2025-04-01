@@ -38,6 +38,19 @@ class Stream:
         except Exception as e:
             self._logger.error(e)
 
+    async def subscribe_candles(self, exchange: str, contract: Dict, duration: str = '1 W', interval: str = '1 min'):
+        try:
+            exchange = self.exchanges.get(exchange)
+            if not exchange:
+                self._logger.warning(f"{exchange} was not found in directory.")
+                return
+            await exchange.subscribe_candles(contract=contract, 
+                                             callback = self._candles_callback, 
+                                             duration = duration, 
+                                             interval = interval)
+        except Exception as e:
+            self._logger.error(e)
+
     async def _trades_callback(self, trades: List):
         await self.db.insert_trades(trades)
         # print(trades)
@@ -45,3 +58,7 @@ class Stream:
     async def _orderbook_callback(self, orderbook: Dict):
         await self.db.insert_orderbook(orderbook)
         # print(orderbook)
+
+    async def _candles_callback(self, bars: Dict):
+        await self.db.insert_candles(bars)
+        # print(bars)

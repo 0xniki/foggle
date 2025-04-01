@@ -2431,6 +2431,31 @@ class IB:
             self._logger.error("reqMarketRuleAsync: Timeout")
             return None
 
+    async def subscribe_candles(self, contract: Dict, callback: Callable = None, duration: str = '1 W', 
+                                interval: str = '1 min') -> Dict:
+        contract = await self.validate_contract(contract)
+
+        bars = await self.reqHistoricalDataAsync(
+            contract=contract, 
+            endDateTime='', 
+            durationStr=duration, 
+            barSizeSetting=interval, 
+            whatToShow='MIDPOINT', 
+            useRTH=False,
+            formatDate=2, 
+            keepUpToDate=True
+        )
+
+        if callback:
+            async def bar_middleware(bar_data, _):
+                formatted_data = self._format_bar_data(bar_data)
+                await callback(formatted_data)
+            
+            bars.updateEvent.connect(bar_middleware)
+            self._logger.info(f"Subscribed to candles for {contract.symbol}")
+        
+        return bars
+
     async def reqHistoricalDataAsync(
         self,
         contract: Contract,
@@ -2444,7 +2469,6 @@ class IB:
         chartOptions: List[TagValue] = [],
         timeout: float = 60,
     ) -> BarDataList:
-        contract = await self.validate_contract(contract)
         reqId = self.client.getReqId()
         bars = BarDataList()
         bars.reqId = reqId
@@ -2482,6 +2506,47 @@ class IB:
             bars.clear()
 
         return bars
+
+    @staticmethod
+    def _format_bar_data(bars: BarDataList) -> Dict:
+        if not bars or not bars.contract:
+            return None
+            
+        contract = bars.contract
+        exchange = contract.exchange
+        if exchange == "SMART":
+            exchange = contract.primaryExchange
+            
+        contract_info = {
+            "symbol": contract.symbol,
+            "expiration": contract.lastTradeDateOrContractMonth,
+            "exchange": exchange,
+            "currency": contract.currency,
+            "multiplier": contract.multiplier,
+            "secType": contract.secType,
+            "right": contract.right,
+            "strike": contract.strike
+        }
+        
+        formatted_bars = {
+            "contract": contract_info,
+            "timestamp": int(time.time() * 1000),
+            "interval": bars.barSizeSetting,
+            "bars": []
+        }
+        
+        for bar in bars:
+            formatted_bar = {
+                "time": int(bar.date.timestamp() * 1000) if bar.date else None,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume
+            }
+            formatted_bars["bars"].append(formatted_bar)
+        
+        return formatted_bars
 
     def reqHistoricalScheduleAsync(
         self,

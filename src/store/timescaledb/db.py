@@ -288,6 +288,51 @@ class Database:
                 content_hash
             )
 
+    async def insert_candles(self, candle_data: Dict[str, Any]):
+        """
+        Insert candle/bar data into the historical_data table
+        
+        Args:
+            candle_data: Candle data dictionary
+        """
+        if not candle_data or not candle_data.get('bars'):
+            return
+        
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                contract_data = candle_data['contract']
+                contract_id = await self.get_or_create_contract(contract_data)
+                
+                # Only insert completed bars
+                bars = candle_data['bars']
+                completed_bars = bars[:-1] if len(bars) > 1 else bars
+                
+                values = []
+                for bar in completed_bars:
+                    timestamp = datetime.fromtimestamp(bar['time'] / 1000.0, tz=timezone.utc)
+                    
+                    values.append((
+                        timestamp,
+                        contract_id,
+                        float(bar['open']),
+                        float(bar['high']),
+                        float(bar['low']),
+                        float(bar['close']),
+                        float(bar['volume']) if bar['volume'] >= 0 else 0,
+                        None  # spread
+                    ))
+                
+                if values:
+                    await conn.executemany(
+                        """
+                        INSERT INTO historical_data 
+                        (time, contract_id, open, high, low, close, volume, spread)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        ON CONFLICT (time, contract_id) DO NOTHING
+                        """,
+                        values
+                    )
+
     async def _get_or_create_category(self, conn, main_category, subcategory=None):
         """Get or create category and subcategory"""
         formatted_main = self._format_category_name(main_category)
