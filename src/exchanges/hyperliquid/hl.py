@@ -109,7 +109,7 @@ class HL:
             await callback(data)
         try:
             await self.info.subscribe(subscription=subscription, callback=forward_data)
-            self._logger.info(f"Subscribed to trades for {contract['symbol']}")
+            self._logger.debug(f"Subscribed to trades for {contract['symbol']}")
         except Exception as e:
             self._logger.error(f"Failed to subscribe to trades for {contract['symbol']}: {e}")
     
@@ -150,7 +150,7 @@ class HL:
         
         try:
             await self.info.subscribe(subscription=subscription, callback=forward_data)
-            self._logger.info(f"Subscribed to orderbook for {contract['symbol']}")
+            self._logger.debug(f"Subscribed to orderbook for {contract['symbol']}")
         except Exception as e:
             self._logger.error(f"Failed to subscribe to orderbook for {contract['symbol']}: {e}")
 
@@ -225,7 +225,7 @@ class HL:
         
         try:
             await self.info.subscribe(subscription=subscription, callback=forward_data)
-            self._logger.info(f"Subscribed to candles for {contract['symbol']}")
+            self._logger.debug(f"Subscribed to candles for {contract['symbol']}")
         except Exception as e:
             self._logger.error(f"Failed to subscribe to candles for {contract['symbol']}: {e}")
 

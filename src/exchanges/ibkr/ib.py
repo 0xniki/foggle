@@ -1429,6 +1429,8 @@ class IB:
             )
 
     async def subscribe_trades(self, contract: Dict, callback: Callable = None) -> Ticker:
+        if contract["secType"] == "OPT":
+            return
         try:
             valid_contract = await self.validate_contract(contract)
             return self.reqTickByTickData(contract=valid_contract, tickType='AllLast', callback=callback)
@@ -1469,7 +1471,7 @@ class IB:
             
             ticker.updateEvent.connect(tick_middleware)
         
-        self._logger.info(f"Subscribed to trades for {contract.symbol}")
+        self._logger.debug(f"Subscribed to trades for {contract.symbol}")
         return ticker
 
     @staticmethod
@@ -1545,7 +1547,7 @@ class IB:
                 
                 ticker.updateEvent.connect(depth_middleware)
             
-            self._logger.info(f"Subscribed to orderbook for {valid_contract.symbol}")
+            self._logger.debug(f"Subscribed to orderbook for {valid_contract.symbol}")
             return ticker
         except Exception as e:
             self._logger.error(f"Failed to subscribe to orderbook for {contract['symbol']}: {e}")
@@ -2452,7 +2454,7 @@ class IB:
                 await callback(formatted_data)
             
             bars.updateEvent.connect(bar_middleware)
-            self._logger.info(f"Subscribed to candles for {contract.symbol}")
+            self._logger.debug(f"Subscribed to candles for {contract.symbol}")
         
         return bars
 

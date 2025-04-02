@@ -77,8 +77,8 @@ class Foggle:
 
     async def run_forever(self):
         while True:
-            print("Trading loop iteration...")
-            await asyncio.sleep(60)
+            # print("Trading loop iteration...")
+            await asyncio.sleep(600)
 
 def load_config(path: str = 'config.yml') -> Dict:
     with open(path, "r") as f:
@@ -98,83 +98,79 @@ def load_keys(path: str = '.env', key: str = None) -> Dict:
 async def test(stream: Stream, te: TradingEconomics, db: Database):
     te.start_scrape(interval=3600)
 
-    news = await db.get_news_by_category("United States", "Stock Market", limit=2)
+    news = await db.get_news_by_category("United States", "Stock Market", limit=1)
 
     print(news)
 
-    aapl_stock = {
-        "symbol": "AAPL",
-        "secType": "STK",
-        "exchange": "IEX",
-        "currency": "USD"
-        }
-    
-    nq_fut = {
-        "symbol": "NQ",
-        "secType": "FUT",
-        "expiration": "20250620",
-        "exchange": "CME",
-        "currency": "USD"
-        }
-
-    nvda_opt = {
-        "symbol": "NVDA",
-        "secType": "OPT",
-        "expiration": "20250404",
-        "strike": "112",
-        "right": "P",
-        "exchange": "AMEX",
-        "currency": "USD"
-        }
-
-    btc_perp = {
-        "symbol": "BTC",
-        "secType": "PERP",
-        "exchange": "HYPERLIQUID",
-        "currency": "USD"
-        }
-
-    eth_perp = {
-        "symbol": "ETH",
-        "secType": "PERP",
-        "exchange": "HYPERLIQUID",
-        "currency": "USD"
-        }
-    
-    eth_spot = {
-        "symbol": "ETH",
-        "secType": "CRYPTO",
-        "exchange": "PAXOS",
-        "currency": "USD"
-        }
-
-    await stream.subscribe_trades(exchange="IBKR", contract=nq_fut)
-    await stream.subscribe_orderbook(exchange="IBKR", contract=nq_fut)
-    await stream.subscribe_candles(exchange="IBKR", contract=nq_fut, 
-                                   duration='120 S', interval='1 min')
-    
-    # await stream.subscribe_trades(exchange="IBKR", contract=aapl_stock)
-    # await stream.subscribe_orderbook(exchange="IBKR", contract=aapl_stock)
-
-    await stream.subscribe_trades(exchange="IBKR", contract=eth_spot)
-    await stream.subscribe_orderbook(exchange="IBKR", contract=eth_spot)
-    await stream.subscribe_candles(exchange="IBKR", contract=eth_spot, 
-                                   duration='120 S', interval='1 min')
-    
-    # await stream.subscribe_orderbook(exchange="IBKR", contract=nvda_opt)
-    # await stream.subscribe_candles(exchange="IBKR", contract=nvda_opt, 
+    # await stream.subscribe_all(exchange="IBKR", contract=aapl_stock, 
     #                                duration='120 S', interval='1 min')
 
-    await stream.subscribe_trades(exchange="HyperLiquid", contract=btc_perp)
-    await stream.subscribe_orderbook(exchange="HyperLiquid", contract=btc_perp)
-    await stream.subscribe_candles(exchange="HyperLiquid", contract=btc_perp, 
+    await stream.subscribe_all(exchange="IBKR", contract=nq_fut, 
+                               duration='120 S', interval='1 min')
+    await stream.subscribe_all(exchange="IBKR", contract=eth_spot, 
                                    duration='120 S', interval='1 min')
-    
-    await stream.subscribe_trades(exchange="HyperLiquid", contract=eth_perp)
-    await stream.subscribe_orderbook(exchange="HyperLiquid", contract=eth_perp)
-    await stream.subscribe_candles(exchange="HyperLiquid", contract=eth_perp, 
+    await stream.subscribe_all(exchange="IBKR", contract=nvda_opt, 
+                                   duration='120 S', interval='1 min')
+
+    await stream.subscribe_all(exchange="HyperLiquid", contract=btc_perp, 
+                                   duration='120 S', interval='1 min')
+    await stream.subscribe_all(exchange="HyperLiquid", contract=eth_perp, 
                                    duration='120 S', interval='1 min')
 
     # res = await hyperliquid.info.open_orders("0x6d7823cd5c3d9dcd63e6a8021b475e0c7c94b291")
     # print(res)
     
+
+aapl_stock = {
+    "symbol": "AAPL",
+    "secType": "STK",
+    "exchange": "IEX",
+    "currency": "USD"
+    }
+
+es_fut = {
+    "symbol": "ES",
+    "secType": "FUT",
+    "expiration": "20250620",
+    "exchange": "CME",
+    "currency": "USD"
+    }
+
+nq_fut = {
+    "symbol": "NQ",
+    "secType": "FUT",
+    "expiration": "20250620",
+    "exchange": "CME",
+    "currency": "USD"
+    }
+
+nvda_opt = {
+    "symbol": "NVDA",
+    "secType": "OPT",
+    "expiration": "20250404",
+    "strike": "112",
+    "right": "P",
+    "exchange": "AMEX",
+    "currency": "USD"
+    }
+
+btc_perp = {
+    "symbol": "BTC",
+    "secType": "PERP",
+    "exchange": "HYPERLIQUID",
+    "currency": "USD"
+    }
+
+eth_perp = {
+    "symbol": "ETH",
+    "secType": "PERP",
+    "exchange": "HYPERLIQUID",
+    "currency": "USD"
+    }
+
+eth_spot = {
+    "symbol": "ETH",
+    "secType": "CRYPTO",
+    "exchange": "PAXOS",
+    "currency": "USD"
+    }
