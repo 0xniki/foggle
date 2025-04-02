@@ -13,3 +13,5 @@ config.yml
 .env
 
 .DS_Store
+
+plot_test.py

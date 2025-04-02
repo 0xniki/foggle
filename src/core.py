@@ -1,18 +1,17 @@
 import os
 import asyncio
-import yaml
 import signal
 import logging
+import yaml
 
 from dotenv import load_dotenv
 from typing import Dict
 
 from src.api_manager import APIManager
 from src.store.timescaledb.db import Database
-from src.newswatch.trading_econ import TradingEconomics
-from src.exchanges.ibkr import util
 from src.stream import Stream
 from src.feed import Feed
+from src.newswatch.trading_econ import TradingEconomics
 
 
 class Foggle:
@@ -128,6 +127,13 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
         "currency": "USD"
         }
 
+    btc_perp = {
+        "symbol": "BTC",
+        "secType": "PERP",
+        "exchange": "HYPERLIQUID",
+        "currency": "USD"
+        }
+
     eth_perp = {
         "symbol": "ETH",
         "secType": "PERP",
@@ -141,12 +147,6 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
         "exchange": "PAXOS",
         "currency": "USD"
         }
-
-    # bars = await ibkr.reqHistoricalDataAsync(
-    #     nvda_opt, endDateTime='', durationStr='30 D',
-    #     barSizeSetting='1 hour', whatToShow='MIDPOINT', useRTH=True)
-    # df = util.df(bars)
-    # print(df)
 
     await stream.subscribe_trades(exchange="IBKR", contract=nq_fut)
     await stream.subscribe_orderbook(exchange="IBKR", contract=nq_fut)
@@ -165,6 +165,11 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
     # await stream.subscribe_candles(exchange="IBKR", contract=nvda_opt, 
     #                                duration='120 S', interval='1 min')
 
+    await stream.subscribe_trades(exchange="HyperLiquid", contract=btc_perp)
+    await stream.subscribe_orderbook(exchange="HyperLiquid", contract=btc_perp)
+    await stream.subscribe_candles(exchange="HyperLiquid", contract=btc_perp, 
+                                   duration='120 S', interval='1 min')
+    
     await stream.subscribe_trades(exchange="HyperLiquid", contract=eth_perp)
     await stream.subscribe_orderbook(exchange="HyperLiquid", contract=eth_perp)
     await stream.subscribe_candles(exchange="HyperLiquid", contract=eth_perp, 
@@ -173,4 +178,3 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
     # res = await hyperliquid.info.open_orders("0x6d7823cd5c3d9dcd63e6a8021b475e0c7c94b291")
     # print(res)
     
-    # await asyncio.sleep(2)

@@ -311,8 +311,7 @@ class HL:
             "interval": interval,
             "bars": list(candles)  # Create a copy of the list
         }
-        
-        print(formatted_data)
+
         return formatted_data
 
     # @staticmethod

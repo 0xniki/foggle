@@ -333,6 +333,75 @@ class Database:
                         values
                     )
 
+    async def get_historical_data(self, symbol: str, sec_type: str, interval: str, 
+                                from_time: datetime = None, to_time: datetime = None, 
+                                limit: int = 1000):
+        """
+        Get historical OHLCV data from the database
+        
+        Args:
+            symbol: Contract symbol
+            sec_type: Security type (e.g., 'FUT', 'STK', 'PERP')
+            interval: Time interval (e.g., '1 min', '1 hour')
+            from_time: Start datetime (default: 24 hours ago)
+            to_time: End datetime (default: now)
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of candle data
+        """
+        if not from_time:
+            from_time = datetime.now(timezone.utc) - timedelta(days=1)
+        
+        if not to_time:
+            to_time = datetime.now(timezone.utc)
+        
+        async with self.pool.acquire() as conn:
+            # First, get the contract ID
+            contract_row = await conn.fetchrow(
+                """
+                SELECT id FROM contracts 
+                WHERE symbol = $1 AND sec_type = $2
+                """,
+                symbol, sec_type
+            )
+            
+            if not contract_row:
+                return []
+                
+            contract_id = contract_row['id']
+            
+            # Query the historical data
+            rows = await conn.fetch(
+                """
+                SELECT 
+                    time,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume
+                FROM historical_data
+                WHERE contract_id = $1
+                AND time BETWEEN $2 AND $3
+                ORDER BY time ASC
+                LIMIT $4
+                """,
+                contract_id, from_time, to_time, limit
+            )
+            
+            return [
+                {
+                    'time': row['time'].timestamp() * 1000,  # Convert to milliseconds for consistency
+                    'open': float(row['open']),
+                    'high': float(row['high']),
+                    'low': float(row['low']),
+                    'close': float(row['close']),
+                    'volume': float(row['volume'])
+                }
+                for row in rows
+            ]
+
     async def _get_or_create_category(self, conn, main_category, subcategory=None):
         """Get or create category and subcategory"""
         formatted_main = self._format_category_name(main_category)
