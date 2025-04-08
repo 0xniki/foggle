@@ -100,17 +100,18 @@ async def test(stream: Stream, te: TradingEconomics, db: Database):
 
     news = await db.get_news_by_category("United States", "Stock Market", limit=1)
 
-    print(news)
+    print(news['content'])
 
     # await stream.subscribe_all(exchange="IBKR", contract=aapl_stock, 
     #                                duration='120 S', interval='1 min')
-
     await stream.subscribe_all(exchange="IBKR", contract=nq_fut, 
                                duration='120 S', interval='1 min')
+    await stream.subscribe_all(exchange="IBKR", contract=es_fut, 
+                                   duration='120 S', interval='1 min')
     await stream.subscribe_all(exchange="IBKR", contract=eth_spot, 
                                    duration='120 S', interval='1 min')
-    await stream.subscribe_all(exchange="IBKR", contract=nvda_opt, 
-                                   duration='120 S', interval='1 min')
+    # await stream.subscribe_all(exchange="IBKR", contract=nvda_opt, 
+    #                                duration='120 S', interval='1 min')
 
     await stream.subscribe_all(exchange="HyperLiquid", contract=btc_perp, 
                                    duration='120 S', interval='1 min')
